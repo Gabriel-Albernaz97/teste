@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env
+.DS_Store
+users.csv
+products.csv
+carts.csv
+fact_transactions.csv
+d_date.csv
