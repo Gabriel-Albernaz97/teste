@@ -12,3 +12,14 @@ Arquivos gerados:
 py -m pip install -r requirements.txt
 py teste.py
 
+# 🔄 Fluxo do Projeto
+
+Fake Store API
+        ↓
+Script Python (teste.py)
+        ↓
+Geração de arquivos TXT
+        ↓
+Importação no Power BI Desktop
+        ↓
+Dashboard Analítico
