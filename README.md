@@ -8,13 +8,7 @@ Arquivos gerados:
 - `d_date.csv` — dimensão de datas
 - `fact_transactions.csv` — tabela fato (itens explodidos)
 
-Como rodar (Windows):
-
-```powershell
+# Como rodar (Windows):
 py -m pip install -r requirements.txt
 py teste.py
-```
 
-Observações:
-- Para carregar no Power BI, importe as dimensões e a tabela fato e monte o modelo em estrela.
-- Para exportar ao BigQuery, posso adicionar script adicional se você fornecer o `project_id` e credenciais.

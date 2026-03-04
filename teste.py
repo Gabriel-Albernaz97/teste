@@ -1,4 +1,12 @@
-# -*- coding: utf-8 -*-
+"""
+Objetivo:
+
+Script para extrair e normalizar dados da Fake Store API.
+Produzir CSVs estruturados em formato dimensional
+(dimensões e tabela fato) prontos para modelagem analítica.
+(usuarios, produtos, carrinhos, fato_transacoes e dim_data).
+"""
+
 import os
 import requests
 import pandas as pd
@@ -7,50 +15,53 @@ BASE_URL = "https://fakestoreapi.com"
 
 
 def get_data(endpoint: str):
+
+    #Faz uma requisição GET para o endpoint fornecido da Fake Store API.
+
     response = requests.get(f"{BASE_URL}/{endpoint}")
     response.raise_for_status()
     return response.json()
 
 
 def process_users():
+
+    # Extrai e normaliza os dados de usuários.
+
     users = get_data("users")
     df_users = pd.json_normalize(users)
 
-    # Renomear colunas aninhadas
     df_users.rename(columns={
-        "address.city": "city",
-        "address.street": "street",
-        "address.number": "street_number",
-        "address.zipcode": "zipcode",
-        "address.geolocation.lat": "lat",
-        "address.geolocation.long": "long",
-        "name.firstname": "first_name",
-        "name.lastname": "last_name"
+        "address.city": "cidade",
+        "address.street": "rua",
+        "address.number": "numero",
+        "address.zipcode": "cep",
+        "address.geolocation.lat": "latitude",
+        "address.geolocation.long": "longitude",
+        "name.firstname": "primeiro_nome",
+        "name.lastname": "sobrenome"
     }, inplace=True)
 
-    # Criar nome completo
-    df_users["full_name"] = df_users["first_name"] + " " + df_users["last_name"]
+    df_users["nome_completo"] = df_users["primeiro_nome"] + " " + df_users["sobrenome"]
 
-    # Selecionar colunas relevantes
     df_users = df_users[
         [
             "id",
-            "full_name",
+            "nome_completo",
             "username",
             "email",
             "phone",
-            "city",
-            "street",
-            "street_number",
-            "zipcode",
-            "lat",
-            "long"
+            "cidade",
+            "rua",
+            "numero",
+            "cep",
+            "latitude",
+            "longitude"
         ]
     ]
 
     df_users = df_users.astype({
         "id": "int64",
-        "street_number": "int64"
+        "numero": "int64"
     })
 
     df_users.fillna("", inplace=True)
@@ -59,13 +70,15 @@ def process_users():
 
 
 def process_products():
+
+    # Extrai e normaliza os dados de produtos.
+
     products = get_data("products")
     df_products = pd.json_normalize(products)
 
-    # Normalizar rating
     df_products.rename(columns={
-        "rating.rate": "rating_rate",
-        "rating.count": "rating_count"
+        "rating.rate": "avaliacao_media",
+        "rating.count": "quantidade_avaliacoes"
     }, inplace=True)
 
     df_products = df_products[
@@ -74,16 +87,16 @@ def process_products():
             "title",
             "category",
             "price",
-            "rating_rate",
-            "rating_count"
+            "avaliacao_media",
+            "quantidade_avaliacoes"
         ]
     ]
 
     df_products = df_products.astype({
         "id": "int64",
         "price": "float64",
-        "rating_rate": "float64",
-        "rating_count": "int64"
+        "avaliacao_media": "float64",
+        "quantidade_avaliacoes": "int64"
     })
 
     df_products.fillna(0, inplace=True)
@@ -92,57 +105,56 @@ def process_products():
 
 
 def process_carts(products_df):
+
+    # Extrai e normaliza os carrinhos e calcula valores.
+
     carts = get_data("carts")
     df_carts = pd.json_normalize(carts)
 
-    # Converter data
     df_carts["date"] = pd.to_datetime(df_carts["date"])
 
-    # Explodir lista de produtos
     df_carts = df_carts.explode("products")
 
-    # Normalizar coluna products
     products_expanded = pd.json_normalize(df_carts["products"]).reset_index(drop=True)
     df_carts = df_carts.drop(columns=["products"]).reset_index(drop=True)
     df_carts = pd.concat([df_carts, products_expanded], axis=1)
 
     df_carts.rename(columns={
-        "productId": "product_id",
-        "quantity": "quantity"
+        "productId": "id_produto",
+        "quantity": "quantidade"
     }, inplace=True)
 
     df_carts = df_carts.astype({
         "id": "int64",
         "userId": "int64",
-        "product_id": "int64",
-        "quantity": "int64"
+        "id_produto": "int64",
+        "quantidade": "int64"
     })
 
-    # Merge com produtos para calcular valor total
     df_carts = df_carts.merge(
         products_df[["id", "price"]],
-        left_on="product_id",
+        left_on="id_produto",
         right_on="id",
         how="left"
     )
 
     df_carts.rename(columns={
-        "id_x": "cart_id",
-        "userId": "user_id",
-        "price": "unit_price"
+        "id_x": "id_carrinho",
+        "userId": "id_usuario",
+        "price": "preco_unitario"
     }, inplace=True)
 
-    df_carts["total_item_value"] = df_carts["quantity"] * df_carts["unit_price"]
+    df_carts["valor_total"] = df_carts["quantidade"] * df_carts["preco_unitario"]
 
     df_carts = df_carts[
         [
-            "cart_id",
-            "user_id",
+            "id_carrinho",
+            "id_usuario",
             "date",
-            "product_id",
-            "quantity",
-            "unit_price",
-            "total_item_value"
+            "id_produto",
+            "quantidade",
+            "preco_unitario",
+            "valor_total"
         ]
     ]
 
@@ -161,48 +173,59 @@ def main():
     print("Processando carrinhos...")
     df_carts = process_carts(df_products)
 
-    print("Salvando CSVs...")
+    print("Salvando arquivos CSV...")
     base_dir = os.path.dirname(__file__)
-    df_users.to_csv(os.path.join(base_dir, "users.csv"), index=False)
-    df_products.to_csv(os.path.join(base_dir, "products.csv"), index=False)
-    df_carts.to_csv(os.path.join(base_dir, "carts.csv"), index=False)
 
-    # Gerar fato de transações (cada item do carrinho é uma linha)
-    fact_transactions = df_carts.copy()
-    fact_transactions.rename(columns={
-        "cart_id": "transaction_id",
-        "user_id": "user_id",
-        "date": "datetime",
-        "product_id": "product_id",
-        "quantity": "quantity",
-        "unit_price": "unit_price",
-        "total_item_value": "total_value"
-    }, inplace=True)
-    fact_transactions = fact_transactions[[
-        "transaction_id",
-        "user_id",
-        "datetime",
-        "product_id",
-        "quantity",
-        "unit_price",
-        "total_value",
-    ]]
-    fact_transactions.to_csv(os.path.join(base_dir, "fact_transactions.csv"), index=False)
 
-    # Gerar dimensão de datas (d_date)
-    d_date = (
-        pd.to_datetime(fact_transactions['datetime'])
+    # RETORNO USUÁRIOS
+    df_usuarios = df_users.rename(columns={
+        "id": "id_usuario",
+        "username": "usuario",
+        "email": "email",
+        "phone": "telefone"
+    })
+
+    df_usuarios.to_csv(os.path.join(base_dir, "users.csv"), index=False)
+
+
+    # RETORNO PRODUTOS
+    df_produtos = df_products.rename(columns={
+        "id": "id_produto",
+        "title": "titulo",
+        "category": "categoria",
+        "price": "preco_unitario"
+    })
+
+    df_produtos.to_csv(os.path.join(base_dir, "products.csv"), index=False)
+
+
+    # FATO TRANSACOES
+    df_fato = df_carts.rename(columns={
+        "date": "data_hora"
+    })
+
+    # Converter data_hora para apenas data (remover horas)
+    df_fato["data_hora"] = pd.to_datetime(df_fato["data_hora"]).dt.date
+
+    df_fato.to_csv(os.path.join(base_dir, "fato_transacoes.csv"), index=False)
+
+
+    # RETORNO DATA
+    dim_data = (
+        pd.to_datetime(df_fato["data_hora"])
         .drop_duplicates()
         .sort_values()
-        .to_frame(name='datetime')
+        .to_frame(name="data_hora")
     )
-    d_date['date'] = d_date['datetime'].dt.date
-    d_date['year'] = d_date['datetime'].dt.year
-    d_date['month'] = d_date['datetime'].dt.month
-    d_date['day'] = d_date['datetime'].dt.day
-    d_date['weekday'] = d_date['datetime'].dt.day_name()
-    d_date['iso_week'] = d_date['datetime'].dt.isocalendar().week
-    d_date.to_csv(os.path.join(base_dir, "d_date.csv"), index=False)
+
+    dim_data["data"] = dim_data["data_hora"].dt.date
+    dim_data["ano"] = dim_data["data_hora"].dt.year
+    dim_data["mes"] = dim_data["data_hora"].dt.month
+    dim_data["dia"] = dim_data["data_hora"].dt.day
+    dim_data["dia_semana"] = dim_data["data_hora"].dt.day_name()
+    dim_data["semana_iso"] = dim_data["data_hora"].dt.isocalendar().week
+
+    dim_data.to_csv(os.path.join(base_dir, "dim_data.csv"), index=False)
 
     print("Processo finalizado com sucesso!")
 
